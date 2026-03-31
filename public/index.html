@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cabeleleila Leila - Salão de Beleza</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="logo">
+            <h1>💇‍♀️ Cabeleleila Leila</h1>
+        </div>
+        <nav>
+            <button id="btn-cliente" class="nav-btn active">Área do Cliente</button>
+            <button id="btn-admin" class="nav-btn">Área da Leila (Admin)</button>
+        </nav>
+    </header>
+
+    <main id="app">
+        <section id="area-cliente" class="area-container active">
+            <h2>Bem-vinda ao Salão da Leila!</h2>
+            <p class="subtitle">Agende seu horário de forma simples e rápida</p>
+            
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="agendar">Agendar Serviço</button>
+                <button class="tab-btn" data-tab="historico">Meu Histórico</button>
+            </div>
+
+            <div id="tab-agendar" class="tab-content active">
+                <form id="form-agendamento" novalidate>
+                    <div class="form-group input-with-button">
+                        <label for="cliente-telefone">Seu Telefone</label>
+                        <input type="text" id="cliente-telefone" name="telefone" placeholder="(31) 99999-9999" required>
+                        <button type="button" id="btn-buscar-cliente" class="btn-secondary">Buscar</button>
+                    </div>
+                    
+                    <div id="dados-cliente" style="display: none;">
+                        <div class="cliente-info">
+                            <p><strong>Nome:</strong> <span id="cliente-nome"></span></p>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="agendamento-data">Data e Hora</label>
+                            <input type="datetime-local" id="agendamento-data" name="data" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Selecione os Serviços</label>
+                            <div id="lista-servicos" class="servicos-grid"></div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="agendamento-observacoes">Observações</label>
+                            <textarea id="agendamento-observacoes" name="observacoes" placeholder="Alguma observação especial?"></textarea>
+                        </div>
+                        
+                        <div id="resumo-servicos">
+                            <h4>Resumo do Agendamento</h4>
+                            <div id="servicos-selecionados"></div>
+                            <p class="total"><strong>Total: R$ <span id="valor-total">0,00</span></strong></p>
+                        </div>
+                        
+                        <button type="submit" class="btn-primary">Confirmar Agendamento</button>
+                    </div>
+                    
+                    <div id="novo-cliente" style="display: none;">
+                        <h3>Novo Cliente - Preencha seus dados</h3>
+                        <div class="form-group">
+                            <label for="novo-nome">Nome Completo</label>
+                            <input type="text" id="novo-nome" name="nome" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="novo-email">Email (opcional)</label>
+                            <input type="email" id="novo-email" name="email">
+                        </div>
+                        <div class="form-group">
+                            <button type="button" id="btn-criar-cliente" class="btn-primary">Cadastrar e Continuar</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div id="tab-historico" class="tab-content">
+                <div class="form-group input-with-button">
+                    <label for="historico-telefone">Seu telefone</label>
+                    <input type="text" id="historico-telefone" name="historico-telefone" placeholder="(31) 99999-9999">
+                    <button type="button" id="btn-buscar-historico" class="btn-secondary">Buscar Histórico</button>
+                </div>
+                <div id="historico-resultado"></div>
+            </div>
+        </section>
+
+        <section id="area-admin" class="area-container">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Painel Administrativo</h2>
+                <button type="button" class="btn-secondary" onclick="sairAdmin()" style="width: auto; margin: 0;">Sair</button>
+            </div>
+            
+            <div class="dashboard-cards">
+                <div class="card">
+                    <h3>Agendamentos (7 dias)</h3>
+                    <p class="stat" id="stat-total">0</p>
+                </div>
+                <div class="card">
+                    <h3>Confirmados</h3>
+                    <p class="stat" id="stat-confirmados">0</p>
+                </div>
+                <div class="card">
+                    <h3>Concluídos</h3>
+                    <p class="stat" id="stat-concluidos">0</p>
+                </div>
+                <div class="card">
+                    <h3>Faturamento</h3>
+                    <p class="stat" id="stat-faturamento">R$ 0,00</p>
+                </div>
+            </div>
+            
+            <div class="tabs-admin">
+                <button class="tab-btn active" data-tab="agenda-admin">Agenda</button>
+                <button class="tab-btn" data-tab="gerenciar">Gerenciar</button>
+            </div>
+            
+            <div id="tab-agenda-admin" class="tab-content active">
+                <h3>Próximos Agendamentos</h3>
+                <div id="lista-agendamentos-admin"></div>
+            </div>
+            
+            <div id="tab-gerenciar" class="tab-content">
+                <h3>Gerenciar Serviços</h3>
+                <div class="form-group">
+                    <button type="button" id="btn-novo-servico" class="btn-primary">Novo Serviço</button>
+                </div>
+                <div id="lista-servicos-admin"></div>
+            </div>
+        </section>
+    </main>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3 id="modal-titulo">Agendamento</h3>
+            <div id="modal-body"></div>
+            <div id="modal-actions"></div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>
