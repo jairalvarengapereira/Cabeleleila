@@ -73,6 +73,15 @@ function setupEventListeners() {
 function showArea(area) {
   document.querySelectorAll('.area-container').forEach(el => el.classList.remove('active'));
   document.getElementById('area-' + area).classList.add('active');
+  
+  if (area === 'cliente') {
+    document.querySelectorAll('.tabs .tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelectorAll('.tabs ~ .tab-content').forEach(el => el.classList.remove('active'));
+    const primeiroTab = document.querySelector('.tabs .tab-btn');
+    const primeiraAba = document.querySelector('.tabs ~ .tab-content');
+    if (primeiroTab) primeiroTab.classList.add('active');
+    if (primeiraAba) primeiraAba.classList.add('active');
+  }
 }
 
 function showTab(tabId, tabsSelector) {

@@ -92,11 +92,11 @@ class AgendamentoController {
       }
 
       if (dataHora && status === undefined) {
-        const dataAgendamento = new Date(dataHora);
+        const dataAgendamentoOriginal = new Date(existingAgendamento.data_hora);
         const agora = new Date();
         const doisDiasMs = 2 * 24 * 60 * 60 * 1000;
 
-        if (dataAgendamento.getTime() - agora.getTime() < doisDiasMs) {
+        if (dataAgendamentoOriginal.getTime() - agora.getTime() < doisDiasMs) {
           return res.status(403).json({
             error: 'Alteração permitida apenas via telefone (31) XXXX-XXXX',
             message: 'Agendamentos com menos de 48h de antecedência só podem ser alterados por telefone.'

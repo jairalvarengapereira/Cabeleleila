@@ -137,12 +137,21 @@ class Agendamento {
 
       await client.query(updateQuery, params);
 
-      if (servicosIds !== undefined && servicosIds.length > 0) {
+      if (servicosIds !== undefined && servicosIds.length >= 0) {
         const existingResult = await client.query(
           'SELECT servico_id FROM agendamento_servicos WHERE agendamento_id = $1',
           [id]
         );
         const existingIds = existingResult.rows.map(r => r.servico_id);
+
+        for (const existingId of existingIds) {
+          if (!servicosIds.includes(existingId)) {
+            await client.query(
+              'DELETE FROM agendamento_servicos WHERE agendamento_id = $1 AND servico_id = $2',
+              [id, existingId]
+            );
+          }
+        }
 
         for (const servicoId of servicosIds) {
           if (!existingIds.includes(servicoId)) {
