@@ -19,7 +19,7 @@ class AgendamentoController {
       const dataAgendamento = new Date(dataHora);
       const agora = new Date();
       if (dataAgendamento < agora) {
-        return res.status(400).json({ error: 'Não é possível agendar para uma data passée' });
+        return res.status(400).json({ error: 'Não é possível agendar para uma data passada' });
       }
 
       if (!ignoreSameWeek) {

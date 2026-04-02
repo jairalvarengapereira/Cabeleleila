@@ -358,11 +358,15 @@ Este projeto está sob a licença MIT.
 
 ## 📸 Screenshots
 
-> Adicione screenshots do sistema aqui:
-> - Tela inicial (Área do Cliente)
-> - Tela de agendamento
-> - Tela administrativa (Dashboard)
-> - Tela de gerenciamento de serviços
+### Área do Cliente
+| Tela de Login | Agendamento | Histórico |
+|---------------|--------------|-----------|
+| ![Login](ImgLogin.png) | ![Agendamento](ImgDtProx.png) | ![Histórico](ImgHist.png) |
+
+### Área Administrativa
+| Dashboard | Agenda |
+|-----------|--------|
+| ![Admin](Admin.png) | ![Agenda](AdminAgenda.png) |
 
 ---
 
