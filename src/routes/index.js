@@ -6,7 +6,7 @@ const ServicoController = require('../controllers/ServicoController');
 const AgendamentoController = require('../controllers/AgendamentoController');
 
 router.get('/', (req, res) => {
-    res.json({ message: 'API Cabeleleila Leila funcionando!' });
+  res.json({ message: 'API Cabeleleila Leila funcionando!' });
 });
 
 router.post('/clientes', ClienteController.create);
