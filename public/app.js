@@ -350,7 +350,7 @@ async function loadAgendamentosAdmin() {
 function renderAgendamentosAdmin(agendamentos) {
   const listaAgenda = document.getElementById('lista-agendamentos-admin');
   if (!listaAgenda) return;
-  const renderCard = (a) => `<div class="agendamento-card ${a.status}"><div class="agendamento-header"><h4>${a.cliente_nome}</h4><span class="status-badge ${a.status}">${a.status}</span></div><div class="agendamento-details"><p><strong>Data:</strong> ${formatDate(a.data_hora)}</p><p><strong>Serviços:</strong> ${a.servicos.map(s => s.nome).join(', ') || 'Nenhum'}</p><p><strong>Telefone:</strong> ${a.cliente_telefone}</p>${a.observacoes ? `<p><strong>Obs:</strong> ${a.observacoes}</p>` : ''}</div><div class="agendamento-actions">${a.status !== 'concluido' ? `<button type="button" class="btn-action btn-editar" onclick="editarAgendamentoAdmin(${a.id})">Editar</button>` : ''}${a.status === 'pendente' ? `<button type="button" class="btn-action btn-confirmar" onclick="updateStatus(${a.id}, 'confirmado')">Confirmar</button>` : ''}${a.status === 'confirmado' ? `<button type="button" class="btn-action btn-concluir" onclick="updateStatus(${a.id}, 'concluido')">Concluir</button>` : ''}${a.status !== 'cancelado' && a.status !== 'concluido' ? `<button type="button" class="btn-action btn-cancelar" onclick="confirmarCancelamento(${a.id})">Cancelar</button>` : ''}</div></div>`;
+  const renderCard = (a) => `<div class="agendamento-card ${a.status}"><div class="agendamento-header"><h4>${a.cliente_nome}</h4><span class="status-badge ${a.status}">${a.status}</span></div><div class="agendamento-details"><p><strong>Data:</strong> ${formatDate(a.data_hora)}</p><p><strong>Serviços:</strong> ${a.servicos.map(s => s.nome).join(', ') || 'Nenhum'}</p><p><strong>Telefone:</strong> ${a.cliente_telefone}</p>${a.observacoes ? `<p><strong>Obs:</strong> ${a.observacoes}</p>` : ''}</div><div class="agendamento-actions">${a.status !== 'concluido' ? `<button type="button" class="btn-action btn-editar" onclick="editarAgendamentoAdmin(${a.id})">Editar</button>` : ''}${a.status === 'pendente' ? `<button type="button" class="btn-action btn-confirmar" onclick="confirmarAgendamento(${a.id})">Confirmar</button>` : ''}${a.status === 'confirmado' ? `<button type="button" class="btn-action btn-concluir" onclick="updateStatus(${a.id}, 'concluido')">Concluir</button>` : ''}${a.status !== 'cancelado' && a.status !== 'concluido' ? `<button type="button" class="btn-action btn-cancelar" onclick="confirmarCancelamento(${a.id})">Cancelar</button>` : ''}</div></div>`;
   listaAgenda.innerHTML = agendamentos.map(renderCard).join('');
 }
 
@@ -458,6 +458,122 @@ function confirmarCancelamento(agendamentoId) {
   }
 }
 
+function confirmarAgendamento(agendamentoId) {
+  if (confirm('Tem certeza que deseja confirmar este agendamento?')) {
+    updateStatus(agendamentoId, 'confirmado');
+  }
+}
+
+async function editarAgendamentoAdmin(agendamentoId) {
+  try {
+    const response = await fetch(`${API_URL}/agendamentos/${agendamentoId}`);
+    const agendamento = await response.json();
+
+    const modalBody = document.getElementById('modal-body');
+    modalBody.innerHTML = `
+      <form id="form-editar-admin">
+        <div class="form-group">
+          <label for="edit-data-admin">Data e Hora</label>
+          <input type="datetime-local" id="edit-data-admin" value="${agendamento.data_hora.slice(0, 16)}" required>
+        </div>
+        <div class="form-group">
+          <label>Serviços</label>
+          <div id="edit-servicos-admin-grid" class="servicos-grid"></div>
+        </div>
+        <div class="form-group">
+          <label for="edit-observacoes-admin">Observações</label>
+          <textarea id="edit-observacoes-admin">${agendamento.observacoes || ''}</textarea>
+        </div>
+        <div class="form-group">
+          <label for="edit-status-admin">Status</label>
+          <select id="edit-status-admin">
+            <option value="pendente" ${agendamento.status === 'pendente' ? 'selected' : ''}>Pendente</option>
+            <option value="confirmado" ${agendamento.status === 'confirmado' ? 'selected' : ''}>Confirmado</option>
+            <option value="concluido" ${agendamento.status === 'concluido' ? 'selected' : ''}>Concluido</option>
+            <option value="cancelado" ${agendamento.status === 'cancelado' ? 'selected' : ''}>Cancelado</option>
+          </select>
+        </div>
+      </form>
+    `;
+
+    renderServicosEdicaoAdmin(agendamento.servicos);
+
+    document.getElementById('modal-titulo').textContent = 'Editar Agendamento';
+    document.getElementById('modal-actions').innerHTML = `
+      <button type="button" class="btn-primary" onclick="salvarEdicaoAdmin(${agendamentoId})">Salvar</button>
+      <button type="button" class="btn-secondary" onclick="closeModal()">Cancelar</button>
+    `;
+
+    document.getElementById('modal').classList.add('active');
+  } catch (error) {
+    showToast('Erro ao carregar agendamento', 'error');
+  }
+}
+
+function renderServicosEdicaoAdmin(servicosAtuais) {
+  const container = document.getElementById('edit-servicos-admin-grid');
+  const idsAtuais = servicosAtuais.map(s => s.id);
+  window.servicosEdicaoAdminSelecionados = [...idsAtuais];
+
+  container.innerHTML = servicos.map(s => `
+    <div class="servico-item ${idsAtuais.includes(s.id) ? 'selected' : ''}" data-id="${s.id}" onclick="toggleServicoEdicaoAdmin(${s.id})">
+      <h4>${s.nome}</h4>
+      <p class="preco">R$ ${parseFloat(s.preco).toFixed(2)}</p>
+      <p class="duracao">${s.duracao_minutos} min</p>
+    </div>
+  `).join('');
+}
+
+function toggleServicoEdicaoAdmin(servicoId) {
+  const index = window.servicosEdicaoAdminSelecionados.indexOf(servicoId);
+  if (index > -1) {
+    window.servicosEdicaoAdminSelecionados.splice(index, 1);
+  } else {
+    window.servicosEdicaoAdminSelecionados.push(servicoId);
+  }
+
+  document.querySelectorAll('#edit-servicos-admin-grid .servico-item').forEach(el => {
+    const id = parseInt(el.dataset.id);
+    el.classList.toggle('selected', window.servicosEdicaoAdminSelecionados.includes(id));
+  });
+}
+
+async function salvarEdicaoAdmin(agendamentoId) {
+  const dataHora = document.getElementById('edit-data-admin').value;
+  const observacoes = document.getElementById('edit-observacoes-admin').value;
+  const status = document.getElementById('edit-status-admin').value;
+
+  if (!dataHora) {
+    showToast('Selecione uma data e hora', 'warning');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/agendamentos/${agendamentoId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dataHora,
+        observacoes,
+        status,
+        servicosIds: window.servicosEdicaoAdminSelecionados
+      })
+    });
+
+    if (response.ok) {
+      showToast('Agendamento atualizado!', 'success');
+      closeModal();
+      loadAgendamentosAdmin();
+      loadDashboard();
+    } else {
+      const data = await response.json();
+      showToast(data.error || 'Erro ao atualizar agendamento', 'error');
+    }
+  } catch (error) {
+    showToast('Erro ao atualizar agendamento', 'error');
+  }
+}
+
 window.confirmarCancelamento = confirmarCancelamento;
 
 async function updateStatus(agendamentoId, status) {
@@ -469,6 +585,7 @@ async function updateStatus(agendamentoId, status) {
 }
 
 window.updateStatus = updateStatus;
+window.confirmarAgendamento = confirmarAgendamento;
 
 async function loadServicosAdmin() {
   try {
@@ -535,6 +652,9 @@ function editarServico(id) {
 
 window.verificarSenhaAdmin = verificarSenhaAdmin;
 window.toggleServico = toggleServico;
+window.toggleServicoEdicaoAdmin = toggleServicoEdicaoAdmin;
+window.editarAgendamentoAdmin = editarAgendamentoAdmin;
+window.salvarEdicaoAdmin = salvarEdicaoAdmin;
 window.editarServico = editarServico;
 window.excluirServico = excluirServico;
 window.salvarServico = salvarServico;
