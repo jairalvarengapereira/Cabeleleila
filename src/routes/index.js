@@ -4,10 +4,14 @@ const router = express.Router();
 const ClienteController = require('../controllers/ClienteController');
 const ServicoController = require('../controllers/ServicoController');
 const AgendamentoController = require('../controllers/AgendamentoController');
+const ConfiguracaoController = require('../controllers/ConfiguracaoController');
 
 router.get('/', (req, res) => {
   res.json({ message: 'API Cabeleleila Leila funcionando!' });
 });
+
+router.get('/configuracoes', ConfiguracaoController.getAll);
+router.put('/configuracoes', ConfiguracaoController.update);
 
 router.post('/clientes', ClienteController.create);
 router.get('/clientes', ClienteController.findAll);
@@ -24,6 +28,7 @@ router.delete('/servicos/:id', ServicoController.delete);
 
 router.post('/agendamentos', AgendamentoController.create);
 router.get('/agendamentos', AgendamentoController.findAll);
+router.get('/agendamentos/ocupados', AgendamentoController.getOcupados);
 router.get('/agendamentos/:id', AgendamentoController.findById);
 router.get('/agendamentos/cliente/:clienteId', AgendamentoController.findByCliente);
 router.put('/agendamentos/:id', AgendamentoController.update);

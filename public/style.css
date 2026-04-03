@@ -530,11 +530,41 @@ button {
   box-shadow: var(--shadow);
 }
 
+.historico-item.cancelado {
+  background: #ffebee;
+  border-left: 4px solid #c62828;
+}
+
+.historico-item.pendente {
+  background: #fff3e0;
+  border-left: 4px solid #f57c00;
+}
+
+.historico-item.confirmado {
+  background: #e3f2fd;
+  border-left: 4px solid #1976d2;
+}
+
+.historico-item.concluido {
+  background: #e8f5e9;
+  border-left: 4px solid #388e3c;
+}
+
 .historico-item .data {
   color: var(--primary-color);
   font-weight: 600;
   margin-bottom: 0.5rem;
 }
+
+.historico-item .status {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.historico-item.pendente .status { color: #f57c00; }
+.historico-item.confirmado .status { color: #1976d2; }
+.historico-item.concluido .status { color: #388e3c; }
+.historico-item.cancelado .status { color: #c62828; }
 
 .historico-item .servicos {
   display: flex;

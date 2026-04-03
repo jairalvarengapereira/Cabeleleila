@@ -5,7 +5,7 @@ const Servico = require('../models/Servico');
 class AgendamentoController {
   static async create(req, res) {
     try {
-      const { clienteId, dataHora, servicosIds, observacoes, ignoreSameWeek } = req.body;
+      const { clienteId, dataHora, servicosIds, observacoes } = req.body;
 
       if (!clienteId || !dataHora) {
         return res.status(400).json({ error: 'Cliente e data/hora são obrigatórios' });
@@ -22,24 +22,24 @@ class AgendamentoController {
         return res.status(400).json({ error: 'Não é possível agendar para uma data passada' });
       }
 
-      if (!ignoreSameWeek) {
-        const sameWeekAgendamentos = await Agendamento.checkSameWeekAgendamento(clienteId, dataHora);
-
-        if (sameWeekAgendamentos.length > 0) {
-          const existingAgendamento = await Agendamento.findById(sameWeekAgendamentos[0].id);
-          return res.status(200).json({
-            message: `Atenção: Você já possui agendamento essa semana. Considere unificar os serviços para uma única visita.`,
-            existingAgendamento,
-            suggested: true
-          });
-        }
+      const sameDayAgendamento = await Agendamento.checkSameDayAgendamento(clienteId, dataHora);
+      if (sameDayAgendamento) {
+        return res.status(200).json({
+          message: `Você já possui agendamento neste dia. Deseja unificar os serviços?`,
+          existingAgendamento: sameDayAgendamento,
+          suggested: true
+        });
       }
 
-      const agendamento = await Agendamento.create(clienteId, dataHora, servicosIds, observacoes);
+      const duracaoTotal = servicosIds ? await Servico.getDuracaoTotal(servicosIds) : 30;
+      const agendamento = await Agendamento.create(clienteId, dataHora, servicosIds, observacoes, duracaoTotal);
 
       res.status(201).json(agendamento);
     } catch (error) {
       console.error('Erro ao criar agendamento:', error);
+      if (error.message.includes('já está reservado') || error.message.includes('já possui agendamento')) {
+        return res.status(400).json({ error: error.message });
+      }
       res.status(500).json({ error: 'Erro ao criar agendamento' });
     }
   }
@@ -84,7 +84,7 @@ class AgendamentoController {
   static async update(req, res) {
     try {
       const { id } = req.params;
-      const { dataHora, status, observacoes, servicosIds } = req.body;
+      const { dataHora, status, observacoes, servicosIds, mergeServicos } = req.body;
 
       const existingAgendamento = await Agendamento.findById(id);
       if (!existingAgendamento) {
@@ -104,10 +104,20 @@ class AgendamentoController {
         }
       }
 
-      const agendamento = await Agendamento.update(id, dataHora, status, observacoes, servicosIds);
+      let finalServicosIds = servicosIds;
+      if (mergeServicos && servicosIds && servicosIds.length > 0) {
+        const existingServicos = existingAgendamento.servicos || [];
+        const existingServicosIds = existingServicos.map(s => s.id);
+        finalServicosIds = [...new Set([...existingServicosIds, ...servicosIds])];
+      }
+
+      const agendamento = await Agendamento.update(id, dataHora, status, observacoes, finalServicosIds);
       res.json(agendamento);
     } catch (error) {
       console.error('Erro ao atualizar agendamento:', error);
+      if (error.message === 'Horário já agendado') {
+        return res.status(400).json({ error: 'Horário já agendado por outro cliente' });
+      }
       res.status(500).json({ error: 'Erro ao atualizar agendamento' });
     }
   }
@@ -257,6 +267,21 @@ class AgendamentoController {
     } catch (error) {
       console.error('Erro ao buscar dados do dashboard:', error);
       res.status(500).json({ error: 'Erro ao buscar dados do dashboard' });
+    }
+  }
+
+  static async getOcupados(req, res) {
+    try {
+      const { data } = req.query;
+      if (!data) {
+        return res.status(400).json({ error: 'Data é obrigatória' });
+      }
+
+      const horarios = await Agendamento.getHorariosOcupados(data);
+      res.json(horarios);
+    } catch (error) {
+      console.error('Erro ao buscar horários ocupados:', error);
+      res.status(500).json({ error: 'Erro ao buscar horários ocupados' });
     }
   }
 }

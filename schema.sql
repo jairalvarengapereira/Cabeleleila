@@ -1,6 +1,21 @@
 -- Schema Salão de Beleza Leila
 -- PostgreSQL
 
+-- Tabela de Configurações
+CREATE TABLE IF NOT EXISTS configuracoes (
+    id SERIAL PRIMARY KEY,
+    chave VARCHAR(50) UNIQUE NOT NULL,
+    valor VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Dados Iniciais - Configurações
+INSERT INTO configuracoes (chave, valor) VALUES
+('horario_inicio', '07:00'),
+('horario_fim', '23:00')
+ON CONFLICT (chave) DO NOTHING;
+
 -- Tabela de Clientes
 CREATE TABLE IF NOT EXISTS clientes (
     id SERIAL PRIMARY KEY,

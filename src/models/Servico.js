@@ -28,6 +28,12 @@ class Servico {
 		return result.rows;
 	}
 
+	static async getDuracaoTotal(servicosIds) {
+		const query = 'SELECT COALESCE(SUM(duracao_minutos), 0) as total FROM servicos WHERE id = ANY($1)';
+		const result = await pool.query(query, [servicosIds]);
+		return parseInt(result.rows[0].total) || 30;
+	}
+
 	static async update(id, nome, descricao, preco, duracaoMinutos) {
 		const query = `
 			UPDATE servicos 

@@ -1,7 +1,122 @@
 const pool = require('../config/db');
 
 class Agendamento {
-  static async create(clienteId, dataHora, servicosIds, observacoes) {
+  static async checkSameDayAgendamento(clienteId, dataHora) {
+    const result = await pool.query(
+      `SELECT id FROM agendamentos 
+       WHERE cliente_id = $1 AND DATE(data_hora) = DATE($2::timestamp) 
+       AND status != 'cancelado' 
+       LIMIT 1`,
+      [clienteId, dataHora]
+    );
+    if (result.rows.length > 0) {
+      return await this.findById(result.rows[0].id);
+    }
+    return null;
+  }
+
+  static async checkDisponibilidade(dataHora, excludeId = null) {
+    let query = `
+      SELECT id, data_hora FROM agendamentos 
+      WHERE status != 'cancelado'`;
+    const params = [];
+    
+    if (dataHora) {
+      query += ` AND DATE(data_hora) = DATE($1::timestamp)`;
+      params.push(dataHora);
+    }
+    
+    const result = await pool.query(query, params);
+    return result.rows;
+  }
+
+  static async verificarHorarios(dataHora, duracaoMinutos, excludeId = null) {
+    const agendamentos = await this.checkDisponibilidade(dataHora);
+    
+    const [horaBase, minutoBase] = dataHora.split(':').map(Number);
+    const intervalosNecessarios = Math.ceil(duracaoMinutos / 30);
+    const horariosReservados = [];
+    
+    for (let i = 0; i < intervalosNecessarios; i++) {
+      const minuto = minutoBase + (i * 30);
+      const hora = horaBase + Math.floor(minuto / 60);
+      const min = minuto % 60;
+      horariosReservados.push(`${hora.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`);
+    }
+    
+    const ocupadost = [];
+    for (const ag of agendamentos) {
+      const horaAg = ag.data_hora.substring(11, 16);
+      ocupadost.push(horaAg);
+    }
+    
+    const conflito = horariosReservados.find(h => ocupadost.includes(h));
+    return conflito ? { disponivel: false, horarioConflito: conflito } : { disponivel: true };
+  }
+
+  static async create(clienteId, dataHora, servicosIds, observacoes, duracaoMinutos = 30) {
+    const horariosReservados = await this.checkDisponibilidade(dataHora);
+    
+    const [horaBase, minutoBase] = dataHora.split(':').map(Number);
+    const intervalosNecessarios = Math.ceil(duracaoMinutos / 30);
+    const horariosNecesarios = [];
+    
+    for (let i = 0; i < intervalosNecessarios; i++) {
+      const minuto = minutoBase + (i * 30);
+      const hora = horaBase + Math.floor(minuto / 60);
+      const min = minuto % 60;
+      horariosNecesarios.push(`${hora.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`);
+    }
+    
+    const horariosOcupados = horariosReservados.map(ag => {
+      const dataStr = ag.data_hora;
+      const data = new Date(dataStr);
+      return `${data.getHours().toString().padStart(2, '0')}:${data.getMinutes().toString().padStart(2, '0')}`;
+    });
+    
+    const conflito = horariosNecesarios.find(h => horariosOcupados.includes(h));
+    if (conflito) {
+      throw new Error(`Horário ${conflito} já está reservado`);
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const agendamentoQuery = `
+        INSERT INTO agendamentos (cliente_id, data_hora, observacoes)
+        VALUES ($1, $2, $3)
+        RETURNING *`;
+      const agendamentoResult = await client.query(agendamentoQuery, [clienteId, dataHora, observacoes]);
+      const agendamento = agendamentoResult.rows[0];
+
+      if (servicosIds && servicosIds.length > 0) {
+        for (const servicoId of servicosIds) {
+          await client.query(
+            'INSERT INTO agendamento_servicos (agendamento_id, servico_id) VALUES ($1, $2)',
+            [agendamento.id, servicoId]
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      return await this.findById(agendamento.id);
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async update(id, dataHora, status, observacoes, servicosIds) {
+    if (dataHora !== undefined) {
+      const disponivel = await this.checkDisponibilidade(dataHora, id);
+      if (!disponivel) {
+        throw new Error('Horário já agendado');
+      }
+    }
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -111,6 +226,13 @@ class Agendamento {
   }
 
   static async update(id, dataHora, status, observacoes, servicosIds) {
+    if (dataHora !== undefined) {
+      const disponivel = await this.checkDisponibilidade(dataHora);
+      if (!disponivel) {
+        throw new Error('Horário já agendado');
+      }
+    }
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -221,6 +343,44 @@ class Agendamento {
       ORDER BY data`;
     const result = await pool.query(query);
     return result.rows;
+  }
+
+  static async getHorariosOcupados(data) {
+    const query = `
+      SELECT 
+        a.id,
+        a.data_hora,
+        COALESCE(
+          (SELECT SUM(s.duracao_minutos)::int 
+           FROM servicos s 
+           JOIN agendamento_servicos ast ON s.id = ast.servico_id 
+           WHERE ast.agendamento_id = a.id),
+          30
+        ) as duracao_total
+      FROM agendamentos a
+      WHERE DATE(a.data_hora) = $1::date
+      AND a.status != 'cancelado'
+      ORDER BY a.data_hora`;
+    const result = await pool.query(query, [data]);
+    
+    const horariosOcupados = new Set();
+    result.rows.forEach(row => {
+      const dataAgendamento = new Date(row.data_hora);
+      const horaBase = dataAgendamento.getHours();
+      const minutoBase = dataAgendamento.getMinutes();
+      const duracao = row.duracao_total || 30;
+      const intervalos = Math.ceil(duracao / 30);
+      
+      for (let i = 0; i < intervalos; i++) {
+        const minuto = minutoBase + (i * 30);
+        const hora = horaBase + Math.floor(minuto / 60);
+        const min = minuto % 60;
+        const horaStr = `${hora.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`;
+        horariosOcupados.add(horaStr);
+      }
+    });
+    
+    return Array.from(horariosOcupados).map(hora => ({ hora }));
   }
 }
 
