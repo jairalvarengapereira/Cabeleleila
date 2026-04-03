@@ -20,14 +20,85 @@ class Agendamento {
       SELECT id, data_hora FROM agendamentos 
       WHERE status != 'cancelado'`;
     const params = [];
+    let paramIndex = 1;
     
     if (dataHora) {
-      query += ` AND DATE(data_hora) = DATE($1::timestamp)`;
+      query += ` AND DATE(data_hora) = DATE($${paramIndex++}::timestamp)`;
       params.push(dataHora);
+    }
+    
+    if (excludeId) {
+      query += ` AND id != $${paramIndex++}`;
+      params.push(excludeId);
     }
     
     const result = await pool.query(query, params);
     return result.rows;
+  }
+
+  static async verificarHorariosOcupados(dataHora, excludeId = null) {
+    const dataBase = dataHora.includes('T') ? dataHora.split('T')[0] : dataHora;
+    
+    let query = `
+      SELECT a.id, a.data_hora::text as data_hora_str FROM agendamentos a
+      WHERE a.status != 'cancelado'`;
+    const params = [];
+    let paramIndex = 1;
+    
+    if (dataBase) {
+      query += ` AND DATE(a.data_hora) = DATE($${paramIndex++})`;
+      params.push(dataBase);
+    }
+    
+    if (excludeId) {
+      query += ` AND a.id != $${paramIndex++}`;
+      params.push(excludeId);
+    }
+    
+    const result = await pool.query(query, params);
+    return result.rows;
+  }
+
+  static async verificarDisponibilidadeCompleta(dataHora, duracaoMinutos, excludeId = null) {
+    const agendamentos = await this.verificarHorariosOcupados(dataHora, excludeId);
+    
+    let horaBase, minutoBase;
+    const horaStr = dataHora.includes('T') ? dataHora.split('T')[1] : dataHora;
+    const partes = horaStr.split(':');
+    horaBase = parseInt(partes[0] || 0);
+    minutoBase = parseInt(partes[1] || 0);
+    
+    const intervalosNecessarios = Math.ceil(duracaoMinutos / 30);
+    const horariosNecesarios = [];
+    
+    for (let i = 0; i < intervalosNecessarios; i++) {
+      const minuto = minutoBase + (i * 30);
+      const hora = horaBase + Math.floor(minuto / 60);
+      const min = minuto % 60;
+      horariosNecesarios.push(`${hora.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`);
+    }
+    
+    const horariosOcupados = [];
+    for (const ag of agendamentos) {
+      const valor = ag.data_hora_str || ag.data_hora;
+      let dataHoraStr = '';
+      if (valor) {
+        if (typeof valor === 'string') {
+          dataHoraStr = valor;
+        } else if (valor instanceof Date) {
+          dataHoraStr = valor.toISOString();
+        } else {
+          dataHoraStr = String(valor);
+        }
+      }
+      if (dataHoraStr && typeof dataHoraStr.substring === 'function') {
+        const horaAg = dataHoraStr.substring(11, 16);
+        horariosOcupados.push(horaAg);
+      }
+    }
+    
+    const conflito = horariosNecesarios.find(h => horariosOcupados.includes(h));
+    return conflito ? { disponivel: false, horarioConflito: conflito } : { disponivel: true };
   }
 
   static async verificarHorarios(dataHora, duracaoMinutos, excludeId = null) {
@@ -46,8 +117,11 @@ class Agendamento {
     
     const ocupadost = [];
     for (const ag of agendamentos) {
-      const horaAg = ag.data_hora.substring(11, 16);
-      ocupadost.push(horaAg);
+      const valor = ag.data_hora;
+      if (valor !== null && valor !== undefined) {
+        const horaAg = String(valor).substring(11, 16);
+        ocupadost.push(horaAg);
+      }
     }
     
     const conflito = horariosReservados.find(h => ocupadost.includes(h));
@@ -69,52 +143,14 @@ class Agendamento {
     }
     
     const horariosOcupados = horariosReservados.map(ag => {
-      const dataStr = ag.data_hora;
-      const data = new Date(dataStr);
-      return `${data.getHours().toString().padStart(2, '0')}:${data.getMinutes().toString().padStart(2, '0')}`;
-    });
+      if (!ag.data_hora) return null;
+      const dataStr = String(ag.data_hora);
+      return dataStr.substring(11, 16);
+    }).filter(h => h);
     
     const conflito = horariosNecesarios.find(h => horariosOcupados.includes(h));
     if (conflito) {
       throw new Error(`Horário ${conflito} já está reservado`);
-    }
-
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      const agendamentoQuery = `
-        INSERT INTO agendamentos (cliente_id, data_hora, observacoes)
-        VALUES ($1, $2, $3)
-        RETURNING *`;
-      const agendamentoResult = await client.query(agendamentoQuery, [clienteId, dataHora, observacoes]);
-      const agendamento = agendamentoResult.rows[0];
-
-      if (servicosIds && servicosIds.length > 0) {
-        for (const servicoId of servicosIds) {
-          await client.query(
-            'INSERT INTO agendamento_servicos (agendamento_id, servico_id) VALUES ($1, $2)',
-            [agendamento.id, servicoId]
-          );
-        }
-      }
-
-      await client.query('COMMIT');
-      return await this.findById(agendamento.id);
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  static async update(id, dataHora, status, observacoes, servicosIds) {
-    if (dataHora !== undefined) {
-      const disponivel = await this.checkDisponibilidade(dataHora, id);
-      if (!disponivel) {
-        throw new Error('Horário já agendado');
-      }
     }
 
     const client = await pool.connect();
@@ -227,9 +263,22 @@ class Agendamento {
 
   static async update(id, dataHora, status, observacoes, servicosIds) {
     if (dataHora !== undefined) {
-      const disponivel = await this.checkDisponibilidade(dataHora);
-      if (!disponivel) {
-        throw new Error('Horário já agendado');
+      let duracaoTotal = 30;
+      if (servicosIds && servicosIds.length > 0) {
+        try {
+          const servicosResult = await pool.query(
+            'SELECT SUM(duracao_minutos) as duracao FROM servicos WHERE id = ANY($1)',
+            [servicosIds]
+          );
+          duracaoTotal = servicosResult.rows[0]?.duracao || 30;
+        } catch (e) {
+          duracaoTotal = 30;
+        }
+      }
+      
+      const disponibilidade = await this.verificarDisponibilidadeCompleta(dataHora, duracaoTotal, id);
+      if (!disponibilidade.disponivel) {
+        throw new Error(`Horário ${disponibilidade.horarioConflito} já está reservado`);
       }
     }
 

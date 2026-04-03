@@ -183,27 +183,16 @@ class AgendamentoController {
         return res.status(404).json({ error: 'Agendamento não encontrado' });
       }
 
-      if (agendamento.status === 'confirmado') {
+      if (agendamento.status !== 'pendente') {
         return res.status(403).json({
-          error: 'Agendamento já confirmado',
-          message: 'Entre em contato por telefone para cancelar.'
+          error: 'Agendamento não pode ser excluído',
+          message: 'Apenas agendamentos pendentes podem ser excluídos pelo cliente.'
         });
       }
 
       const cliente = await Cliente.findById(agendamento.cliente_id);
       if (cliente.telefone !== telefone) {
         return res.status(403).json({ error: 'Telefone não confere' });
-      }
-
-      const dataAgendamento = new Date(agendamento.data_hora);
-      const agora = new Date();
-      const doisDiasMs = 2 * 24 * 60 * 60 * 1000;
-
-      if (dataAgendamento.getTime() - agora.getTime() < doisDiasMs) {
-        return res.status(403).json({
-          error: 'Alteração permitida apenas via telefone (31) XXXX-XXXX',
-          message: 'Agendamentos com menos de 48h de antecedência só podem ser alterados por telefone.'
-        });
       }
 
       await Agendamento.delete(agendamentoId);
@@ -224,10 +213,10 @@ class AgendamentoController {
         return res.status(404).json({ error: 'Agendamento não encontrado' });
       }
 
-      if (agendamento.status === 'confirmado') {
+      if (agendamento.status !== 'pendente') {
         return res.status(403).json({
-          error: 'Agendamento já confirmado',
-          message: 'Entre em contato por telefone para alterar.'
+          error: 'Agendamento não pode ser alterado',
+          message: 'Apenas agendamentos pendentes podem ser alterados pelo cliente.'
         });
       }
 
@@ -236,22 +225,14 @@ class AgendamentoController {
         return res.status(403).json({ error: 'Telefone não confere' });
       }
 
-      const dataAgendamento = new Date(dataHora || agendamento.data_hora);
-      const agora = new Date();
-      const doisDiasMs = 2 * 24 * 60 * 60 * 1000;
-
-      if (dataAgendamento.getTime() - agora.getTime() < doisDiasMs) {
-        return res.status(403).json({
-          error: 'Alteração permitida apenas via telefone (31) XXXX-XXXX',
-          message: 'Agendamentos com menos de 48h de antecedência só podem ser alterados por telefone.'
-        });
-      }
-
-      const updated = await Agendamento.update(agendamentoId, dataHora, undefined, observacoes, servicosIds);
+      const updated = await Agendamento.update(agendamentoId, undefined, undefined, observacoes, servicosIds);
       res.json(updated);
     } catch (error) {
       console.error('Erro ao atualizar agendamento:', error);
-      res.status(500).json({ error: 'Erro ao atualizar agendamento' });
+      if (error.message.includes('já está reservado') || error.message.includes('já agendado')) {
+        return res.status(400).json({ error: error.message });
+      }
+      return res.status(500).json({ error: error.message || 'Erro ao atualizar agendamento' });
     }
   }
 

@@ -277,7 +277,7 @@ async function buscarHistorico() {
 function renderHistorico(agendamentos) {
   const container = document.getElementById('historico-resultado');
   if (agendamentos.length === 0) { container.innerHTML = '<p>Nenhum agendamento encontrado.</p>'; return; }
-  container.innerHTML = agendamentos.map(a => `<div class="historico-item ${a.status}"><div class="data">${formatDate(a.data_hora)}</div><div class="status">${a.status === 'cancelado' ? 'CANCELADO' : a.status}</div><div class="servicos">${a.servicos.map(s => `<span class="servico-tag">${s.nome}</span>`).join('')}</div>${a.status !== 'cancelado' ? `<div class="valor">R$ ${a.servicos.reduce((acc, s) => acc + parseFloat(s.preco), 0).toFixed(2).replace('.', ',')}</div>` : ''}</div>`).join('');
+  container.innerHTML = agendamentos.map(a => `<div class="historico-item ${a.status}"><div class="data">${formatDate(a.data_hora)}</div><div class="status">${a.status === 'cancelado' ? 'CANCELADO' : a.status}</div><div class="servicos">${a.servicos.map(s => `<span class="servico-tag">${s.nome}</span>`).join('')}</div>${a.status !== 'cancelado' ? `<div class="valor">R$ ${a.servicos.reduce((acc, s) => acc + parseFloat(s.preco), 0).toFixed(2).replace('.', ',')}</div>` : ''}${a.status === 'pendente' ? `<div class="historico-actions"><button type="button" class="btn-action btn-editar" onclick="editarAgendamentoCliente(${a.id}, '${a.cliente_id}', '${a.data_hora}')">Editar</button><button type="button" class="btn-action btn-cancelar" onclick="excluirAgendamentoCliente(${a.id})">Excluir</button></div>` : ''}</div>`).join('');
 }
 
 async function loadDashboard() {
@@ -670,3 +670,191 @@ function sairAdmin() {
 }
 
 window.sairAdmin = sairAdmin;
+
+async function editarAgendamentoCliente(agendamentoId, clienteId, dataHoraOriginal) {
+  try {
+    const response = await fetch(`${API_URL}/agendamentos/${agendamentoId}`);
+    const agendamento = await response.json();
+    const telefone = document.getElementById('historico-telefone').value.trim();
+
+    const modalBody = document.getElementById('modal-body');
+    modalBody.innerHTML = `
+      <form id="form-editar-cliente">
+        <div class="form-group">
+          <label for="edit-telefone-cliente">Telefone (para confirmar)</label>
+          <input type="tel" id="edit-telefone-cliente" value="${telefone}" required>
+        </div>
+        <p><strong>Data:</strong> ${formatDate(agendamento.data_hora)}</p>
+        <div class="form-group">
+          <label>Serviços</label>
+          <div id="edit-servicos-cliente-grid" class="servicos-grid"></div>
+        </div>
+        <div class="form-group">
+          <label for="edit-observacoes-cliente">Observações</label>
+          <textarea id="edit-observacoes-cliente">${agendamento.observacoes || ''}</textarea>
+        </div>
+      </form>
+    `;
+
+    window.servicosEdicaoClienteSelecionados = agendamento.servicos.map(s => s.id);
+    
+    document.getElementById('modal-titulo').textContent = 'Editar Agendamento';
+    document.getElementById('modal-actions').innerHTML = `
+      <button type="button" class="btn-primary" onclick="salvarEdicaoCliente(${agendamentoId})">Salvar</button>
+      <button type="button" class="btn-secondary" onclick="closeModal()">Cancelar</button>
+    `;
+
+    renderServicosEdicaoCliente(agendamento.servicos);
+
+    document.getElementById('modal').classList.add('active');
+  } catch (error) {
+    showToast('Erro ao carregar agendamento', 'error');
+  }
+}
+
+async function renderHorariosEditarCliente(data) {
+  const container = document.getElementById('horarios-editar-grid');
+  if (!container) return;
+  
+  container.innerHTML = '<p>Carregando horários...</p>';
+  
+  try {
+    const response = await fetch(`${API_URL}/agendamentos/ocupados?data=${data}`);
+    const horariosOcupadosData = await response.json();
+    const horariosOcupadosSet = new Set(horariosOcupadosData.map(h => h.hora));
+
+    const horarios = [];
+    const horaInicio = parseInt(configHorarios.horario_inicio?.split(':')[0] || 7);
+    const minutoInicio = parseInt(configHorarios.horario_inicio?.split(':')[1] || 0);
+    const horaFim = parseInt(configHorarios.horario_fim?.split(':')[0] || 23);
+    const minutoFim = parseInt(configHorarios.horario_fim?.split(':')[1] || 0);
+    let horaFimLimite = horaFim;
+    if (minutoFim === 0) horaFimLimite = horaFim - 1;
+    
+    for (let hora = horaInicio; hora <= horaFimLimite; hora++) {
+      const minutoInicial = hora === horaInicio ? minutoInicio : 0;
+      let minutoFinal = 60;
+      if (hora === horaFim && minutoFim > 0 && minutoFim < 60) minutoFinal = minutoFim;
+      for (let minuto = minutoInicial; minuto < minutoFinal; minuto += 30) {
+        const horaStr = `${hora.toString().padStart(2, '0')}:${minuto.toString().padStart(2, '0')}`;
+        horarios.push(horaStr);
+      }
+    }
+
+    window.horarioEdicaoSelecionado = null;
+
+    container.innerHTML = horarios.map(hora => {
+      const indisponivel = horariosOcupadosSet.has(hora);
+      return `<div class="horario-item ${indisponivel ? 'indisponivel' : ''}" data-hora="${hora}" onclick="${indisponivel ? '' : `selecionarHorarioEdicao('${hora}')`}">${hora}</div>`;
+    }).join('');
+  } catch (error) {
+    container.innerHTML = '<p>Erro ao carregar horários</p>';
+  }
+}
+
+function selecionarHorarioEdicao(hora) {
+  window.horarioEdicaoSelecionado = hora;
+  document.querySelectorAll('#horarios-editar-grid .horario-item').forEach(el => {
+    el.classList.toggle('selected', el.dataset.hora === hora);
+  });
+}
+
+function renderServicosEdicaoCliente(servicosAtuais) {
+  const container = document.getElementById('edit-servicos-cliente-grid');
+  if (!container) return;
+  
+  container.innerHTML = servicos.map(s => {
+    const isSelected = window.servicosEdicaoClienteSelecionados.includes(s.id);
+    return `<div class="servico-item ${isSelected ? 'selected' : ''}" data-id="${s.id}" onclick="toggleServicoEdicaoCliente(${s.id})"><h4>${s.nome}</h4><p class="preco">R$ ${parseFloat(s.preco).toFixed(2)}</p><p class="duracao">${s.duracao_minutos} min</p></div>`;
+  }).join('');
+}
+
+function toggleServicoEdicaoCliente(servicoId) {
+  const index = window.servicosEdicaoClienteSelecionados.indexOf(servicoId);
+  if (index > -1) {
+    window.servicosEdicaoClienteSelecionados.splice(index, 1);
+  } else {
+    window.servicosEdicaoClienteSelecionados.push(servicoId);
+  }
+  
+  document.querySelectorAll('#edit-servicos-cliente-grid .servico-item').forEach(el => {
+    const id = parseInt(el.dataset.id);
+    el.classList.toggle('selected', window.servicosEdicaoClienteSelecionados.includes(id));
+  });
+}
+
+async function salvarEdicaoCliente(agendamentoId) {
+  const telefone = document.getElementById('edit-telefone-cliente').value.trim();
+  const observacoes = document.getElementById('edit-observacoes-cliente').value;
+
+  if (!telefone) {
+    showToast('Telefone é obrigatório', 'warning');
+    return;
+  }
+
+  if (window.servicosEdicaoClienteSelecionados.length === 0) {
+    showToast('Selecione pelo menos um serviço', 'warning');
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}/agendamentos/cliente/${agendamentoId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telefone,
+        servicosIds: window.servicosEdicaoClienteSelecionados,
+        observacoes
+      })
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      showToast('Agendamento atualizado!', 'success');
+      closeModal();
+      buscarHistorico();
+    } else {
+      showToast(data.error || 'Erro ao atualizar agendamento', 'error');
+    }
+  } catch (error) {
+    showToast('Erro ao atualizar agendamento', 'error');
+  }
+}
+
+window.editarAgendamentoCliente = editarAgendamentoCliente;
+window.salvarEdicaoCliente = salvarEdicaoCliente;
+window.toggleServicoEdicaoCliente = toggleServicoEdicaoCliente;
+window.selecionarHorarioEdicao = selecionarHorarioEdicao;
+
+async function excluirAgendamentoCliente(agendamentoId) {
+  const telefone = document.getElementById('historico-telefone').value.trim();
+  
+  if (!telefone) {
+    showToast('Digite seu telefone para confirmar', 'warning');
+    return;
+  }
+  
+  if (!confirm('Tem certeza que deseja excluir este agendamento?')) {
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${API_URL}/agendamentos/cliente/${agendamentoId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telefone })
+    });
+    
+    const data = await response.json();
+    if (response.ok) {
+      showToast('Agendamento excluído!', 'success');
+      buscarHistorico();
+    } else {
+      showToast(data.error || 'Erro ao excluir agendamento', 'error');
+    }
+  } catch (error) {
+    showToast('Erro ao excluir agendamento', 'error');
+  }
+}
+
+window.excluirAgendamentoCliente = excluirAgendamentoCliente;
