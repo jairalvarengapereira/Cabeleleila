@@ -4,15 +4,19 @@ const Servico = require('../models/Servico');
 
 class AgendamentoController {
   static async create(req, res) {
+    console.log('=== AGENDAMENTO CREATE CHAMADO ===');
+    console.log('req.body:', req.body);
     try {
       const { clienteId, dataHora, servicosIds, observacoes } = req.body;
 
       if (!clienteId || !dataHora) {
+        console.log('Faltando clienteId ou dataHora');
         return res.status(400).json({ error: 'Cliente e data/hora são obrigatórios' });
       }
 
       const cliente = await Cliente.findById(clienteId);
       if (!cliente) {
+        console.log('Cliente não encontrado:', clienteId);
         return res.status(404).json({ error: 'Cliente não encontrado' });
       }
 
@@ -22,11 +26,12 @@ class AgendamentoController {
         return res.status(400).json({ error: 'Não é possível agendar para uma data passada' });
       }
 
-      const sameDayAgendamento = await Agendamento.checkSameDayAgendamento(clienteId, dataHora);
-      if (sameDayAgendamento) {
+      const sameWeekAgendamento = await Agendamento.checkSameWeekAgendamento(clienteId, dataHora);
+      console.log('sameWeekAgendamento:', sameWeekAgendamento);
+      if (sameWeekAgendamento && !req.body.ignoreSameWeek) {
         return res.status(200).json({
-          message: `Você já possui agendamento neste dia. Deseja unificar os serviços?`,
-          existingAgendamento: sameDayAgendamento,
+          message: `Você já possui agendamento nesta semana. Deseja unificar os serviços?`,
+          existingAgendamento: sameWeekAgendamento,
           suggested: true
         });
       }
@@ -37,6 +42,7 @@ class AgendamentoController {
       res.status(201).json(agendamento);
     } catch (error) {
       console.error('Erro ao criar agendamento:', error);
+      console.error('Stack:', error.stack);
       if (error.message.includes('já está reservado') || error.message.includes('já possui agendamento')) {
         return res.status(400).json({ error: error.message });
       }

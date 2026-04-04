@@ -1,19 +1,6 @@
 const pool = require('../config/db');
 
 class Agendamento {
-  static async checkSameDayAgendamento(clienteId, dataHora) {
-    const result = await pool.query(
-      `SELECT id FROM agendamentos 
-       WHERE cliente_id = $1 AND DATE(data_hora) = DATE($2::timestamp) 
-       AND status != 'cancelado' 
-       LIMIT 1`,
-      [clienteId, dataHora]
-    );
-    if (result.rows.length > 0) {
-      return await this.findById(result.rows[0].id);
-    }
-    return null;
-  }
 
   static async checkDisponibilidade(dataHora, excludeId = null) {
     let query = `
@@ -256,9 +243,14 @@ class Agendamento {
       WHERE a.cliente_id = $1
       AND a.data_hora >= $2::timestamp - INTERVAL '7 days'
       AND a.data_hora <= $2::timestamp + INTERVAL '7 days'
-      AND a.status != 'cancelado'`;
+      AND a.status != 'cancelado'
+      ORDER BY a.data_hora ASC
+      LIMIT 1`;
     const result = await pool.query(query, [clienteId, dataHora]);
-    return result.rows;
+    if (result.rows.length > 0) {
+      return await this.findById(result.rows[0].id);
+    }
+    return null;
   }
 
   static async update(id, dataHora, status, observacoes, servicosIds) {
